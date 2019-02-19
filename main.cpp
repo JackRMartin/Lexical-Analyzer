@@ -4,6 +4,7 @@
 #include <sstream>
 
 bool is_separator(char input);
+void lexer(std::string token);
 
 int main(){
 
@@ -21,29 +22,53 @@ int main(){
 
   std::string token = "";
   std::string temp = "";
+  std::string line = "";
 
-  while(std::getline(input_file, token)){
+  while(std::getline(input_file, line)){
     // token represents a line fromthe source code 
     // we must now check for seperators and add whitespace before and after each separator
+    std::string test = line;
+    int length = line.length();
+
     
-    unsigned length = token.length();
-    
-    for(unsigned i = 0; i < length; i++){
-        if(is_separator(token[i])){
-            if(i == length - 1){
-                token.push_back(" ");
-            } else {
-                token.insert(i + 1, " ");
-            }
-            
-            token.insert(i, " ");
-            length += 2;
-        }
+    // reformat the string with spaced separators!
+    for(unsigned i = 0; i < test.length(); i++){
+      
+      if(is_separator(test[i])){
+	if(i == 0){
+	  test = std::string(" ") + test[0] + std::string(" ") + std::string(test.begin() + 1, test.end());
+	} else if(i == length - 1){
+	  test = std::string(test.begin(), test.begin() + i) + std::string(" ") + test[i] + " ";
+	} else {
+	  std::string temp = std::string(test.begin() + i + 1, test.end());
+	  test = std::string(test.begin(), test.begin() + i) + " " + test[i] + " " + temp;
+	}
+	i += 2;
+      }
     }
     
-    std::stringstream ss(token);
-    while(ss >> temp)
-    std::cout << temp << std::endl;
+    // at this point the separators have been properly separated from their neighboring characters!
+    // now we strip comments, and then we send the newly formatted string to the lexer!
+
+
+    // strip out the comments!
+
+    for(unsigned i = 0; i < test.length(); i++){
+      if(test[i] == '!'){
+	// found the start of a comment!
+	test = std::string(test.begin(), test.begin() + i);
+      }
+    }
+
+    // now separators have been reformatted and comments have been stripped!
+    // we can send the tokens in the line to the lexer function!
+
+    stringstream ss(test);
+    while(ss >> token){ // parse the line into individual tokens to send to the lexer
+      lexer(token); 
+    }
+    
+    std::cout << test << std::endl;
   }
   
   
@@ -63,3 +88,6 @@ bool is_separator(char input){
     return false;
 }
 
+void lexer(std::string input){
+
+}
