@@ -3,6 +3,8 @@
 #include <string>
 #include <sstream>
 
+bool is_separator(char input);
+
 int main(){
 
   std::string file_name;
@@ -21,6 +23,24 @@ int main(){
   std::string temp = "";
 
   while(std::getline(input_file, token)){
+    // token represents a line fromthe source code 
+    // we must now check for seperators and add whitespace before and after each separator
+    
+    unsigned length = token.length();
+    
+    for(unsigned i = 0; i < length; i++){
+        if(is_separator(token[i])){
+            if(i == length - 1){
+                token.push_back(" ");
+            } else {
+                token.insert(i + 1, " ");
+            }
+            
+            token.insert(i, " ");
+            length += 2;
+        }
+    }
+    
     std::stringstream ss(token);
     while(ss >> temp)
     std::cout << temp << std::endl;
@@ -31,3 +51,15 @@ int main(){
   
   return 0;
 }
+
+bool is_separator(char input){
+    const unsigned NUM_SEPARATORS = 9;
+    char separators[NUM_SEPARATORS] = {'(', ')', ',', ':', ';', '[', ']', '{', '}'};
+    
+    for(unsigned i = 0; i < NUM_SEPARATORS; i++){
+        if(input == separators[i]) return true;
+    }
+    
+    return false;
+}
+
