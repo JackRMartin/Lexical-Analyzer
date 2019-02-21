@@ -2,6 +2,8 @@
 #include <fstream>
 #include <string>
 #include <sstream>
+#include <locale>
+#include <ctype.h>
 
 bool is_separator(char  input);
 bool is_operator(char input);
@@ -27,9 +29,9 @@ int main(){
   std::string token = "";
   std::string line = "";
   std::string temp = "";
-  
+
   std::cout << "\nTOKENS      Lexemes\n\n";
-  
+
   while(std::getline(input_file, line)){
     std::string temp = line;
     int length = line.length();
@@ -42,9 +44,9 @@ int main(){
         break;
       }
     }
-    
+
     temp = format_separators(temp);
-    
+
     std::stringstream ss(temp);
     while(ss >> token){ // parse the line into individual tokens to send to the lexer
       if(token.length() == 1){
@@ -54,8 +56,10 @@ int main(){
           std::cout << "SEPARATOR     " << token << "\n";
         }
       }
-      else {
-        lexer(token);
+      else if(is_keyword(token)){
+        std::cout << "KEYWORD       " << token << "\n";
+      } else {
+        std::cout << lexer(token);
       }
     }
     //std::cout << temp << std::endl;
@@ -80,7 +84,7 @@ bool is_separator(char input){
 bool is_operator(char input){
   const int SIZE = 8;
   char operators[SIZE] = {'*', '+', '-', '=', '/', '>', '<', '%'};
-  
+
   for(int i = 0; i < SIZE; i++){
     if(input == operators[i]) return true;
   }
@@ -90,7 +94,7 @@ bool is_operator(char input){
 bool is_keyword(std::string input){
   const int SIZE = 15;
   std::string keywords[SIZE] = {"int", "float", "bool", "if", "else", "then", "do", "while", "whileend", "do", "doend", "for", "and", "or", "function"};
-  
+
   for(unsigned i = 0; i < SIZE; i++){
     if(input == keywords[i]) return true;
   }
@@ -98,7 +102,33 @@ bool is_keyword(std::string input){
 }
 
 std::string lexer(std::string input){
-  return std::string();
+  enum inputs { Letter, Digit, $, Other};
+  enum states { One, Two, Three };
+  states table[3][4] = {Two, Three, Three, Three, Two, Two, Two, Three, Three, Three, Three, Three};
+
+  //std::cout << "checking token " << input << "\n\n";
+  std::string result = "";
+
+  states current_state = One;
+  inputs current_input;
+
+  for(unsigned i = 0; i < input.length(); i++){
+    char temp = input[i];
+    if(isalpha(temp)){
+      current_input = Letter;
+    } else if(isdigit(temp)){
+      current_input = Digit;
+    }
+
+    current_state = table[current_state][current_input];
+
+  }
+
+  if(current_state == Two){
+    //found identifier
+    result = "IDENTIFIER    " + input + "\n";
+  }
+  return result;
 }
 
 std::string format_separators(std::string input){
@@ -115,18 +145,16 @@ std::string format_separators(std::string input){
       i += 2;
     }
   }
-
   return input;
-
 }
 
 std::string strip_comments(std::string input, std::ifstream& stream){
   // search for the next '!' that terminates the comments
   // then return the string that follows immediately after the '!'
   bool found = false;
-  
+
   do{
-    
+
     for(unsigned i = 0; i < input.length(); i++){
       if(input[i] == '!'){
         found = true;
@@ -137,10 +165,10 @@ std::string strip_comments(std::string input, std::ifstream& stream){
         break;
       }
     }
-    
+
     if(found) break;
   } while(std::getline(stream, input));
-  
+
   return input;
-  
+
 }
