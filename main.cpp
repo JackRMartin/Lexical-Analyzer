@@ -20,6 +20,7 @@ int main(){
   std::cin >> file_name;
 
   std::ifstream input_file(file_name + ".txt");
+  std::ofstream output_file("output.txt");
 
   if(!input_file.is_open()){
     std::cout << "Error! File did not open successfully!\n\n";
@@ -30,7 +31,7 @@ int main(){
   std::string line = "";
   std::string temp = "";
 
-  std::cout << "\nTOKENS      Lexemes\n\n";
+  output_file << "\nTOKENS        Lexemes\n\n";
 
   while(std::getline(input_file, line)){
     std::string temp = line;
@@ -51,15 +52,15 @@ int main(){
     while(ss >> token){ // parse the line into individual tokens to send to the lexer
       if(token.length() == 1){
         if(is_operator(token[0])){
-          std::cout << "OPERATOR      " << token << "\n";
-        } else if(is_separator(token[0])){
-          std::cout << "SEPARATOR     " << token << "\n";
+          output_file << "OPERATOR      " << token << "\n";
+        } else if(is_separator(token[0]) || token[0] == '.'){
+          output_file << "SEPARATOR     " << token << "\n";
         }
       }
       else if(is_keyword(token)){
-        std::cout << "KEYWORD       " << token << "\n";
+        output_file << "KEYWORD       " << token << "\n";
       } else {
-        std::cout << lexer(token);
+        output_file << lexer(token);
       }
     }
     //std::cout << temp << std::endl;
@@ -72,8 +73,8 @@ int main(){
 }
 
 bool is_separator(char input){
-  const int NUM_SEPARATORS = 12;
-  char separators[NUM_SEPARATORS] = {'(', ')', ',', ':', ';', '[', ']', '{', '}', '\'', '.'};
+  const int NUM_SEPARATORS = 11;
+  char separators[NUM_SEPARATORS] = {'(', ')', ',', ':', ';', '[', ']', '{', '}', '\''};
 
   for(int i = 0; i < NUM_SEPARATORS; i++){
     if(input == separators[i]) return true;
@@ -102,32 +103,59 @@ bool is_keyword(std::string input){
 }
 
 std::string lexer(std::string input){
-  enum inputs { Letter, Digit, $, Other};
-  enum states { One, Two, Three };
-  states table[3][4] = {Two, Three, Three, Three, Two, Two, Two, Three, Three, Three, Three, Three};
+  enum identifier_inputs { id_letter, id_digit, id_dollar, id_other};
+  enum identifier_states { id_one, id_two, id_three };
+  enum real_inputs { r_plus, r_minus, r_digit, r_other, r_period};
+  enum real_states { r_one, r_two, r_three, r_four, r_five };
+  enum integer_inputs { int_plus, int_minus, int_digit, int_other};
+  enum integer_states {};
+  
+  identifier_states id_table[3][4] = {id_two, id_three, id_three, id_three, id_two, id_two, id_two, id_three, id_three, id_three, id_three, id_three};
+  real_states rs_table[5][5] = { r_two, r_two, r_two, r_five, r_five, r_five, r_five, r_two, r_five, r_three, r_five, r_five, r_four, 
+    r_five, r_five, r_five, r_five, r_four, r_five, r_five, r_five, r_five, r_five, r_five, r_five };
+  integer_states int_table[0][0] = {};
 
   //std::cout << "checking token " << input << "\n\n";
   std::string result = "";
-
-  states current_state = One;
-  inputs current_input;
-
+  identifier_states id_current_state = id_one;
+  identifier_inputs id_current_input;
+  
   for(unsigned i = 0; i < input.length(); i++){
     char temp = input[i];
-    if(isalpha(temp)){
-      current_input = Letter;
-    } else if(isdigit(temp)){
-      current_input = Digit;
-    }
-
-    current_state = table[current_state][current_input];
-
+    if(isalpha(temp)) id_current_input = id_letter;
+    else if(isdigit(temp)) id_current_input = id_digit;
+    else if(temp == '$') id_current_input = id_dollar;
+    else id_current_input = id_other;
+      
+    id_current_state = id_table[id_current_state][id_current_input];
   }
 
-  if(current_state == Two){
+  if(id_current_state == id_two){
     //found identifier
     result = "IDENTIFIER    " + input + "\n";
+  } else { 
+    //check if input is a real number
+    real_states real_current_state = r_one;
+    real_inputs real_current_input;
+    
+    for(unsigned i = 0; i < input.length(); i++){
+      char temp = input[i];
+      if(temp == '+') real_current_input = r_plus;
+      else if(temp == '-') real_current_input = r_minus;
+      else if(isdigit(temp)) real_current_input = r_digit;
+      else if(temp == '.') real_current_input = r_period;
+      else real_current_input = r_other;
+      
+      real_current_state = rs_table[real_current_state][real_current_input];
+      
+    }
+    if(real_current_state == r_four) {
+      result = "REAL NUMBER   " + input + "\n";
+    } else {
+      //check if input is an integer
+    }
   }
+
   return result;
 }
 
@@ -168,7 +196,8 @@ std::string strip_comments(std::string input, std::ifstream& stream){
 
     if(found) break;
   } while(std::getline(stream, input));
-
+  
+  if(!found) input = "";
   return input;
 
 }
