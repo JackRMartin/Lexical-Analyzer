@@ -8,9 +8,11 @@
 bool is_separator(char  input);
 bool is_operator(char input);
 bool is_keyword(std::string input);
+bool contains_period(std::string input);
 std::string format_separators(std::string input);
 std::string lexer(std::string token);
 std::string strip_comments(std::string input, std::ifstream& stream);
+
 
 int main(){
 
@@ -55,6 +57,8 @@ int main(){
           output_file << "OPERATOR      " << token << "\n";
         } else if(is_separator(token[0]) || token[0] == '.'){
           output_file << "SEPARATOR     " << token << "\n";
+        } else {
+          output_file << lexer(token);
         }
       }
       else if(is_keyword(token)){
@@ -103,17 +107,17 @@ bool is_keyword(std::string input){
 }
 
 std::string lexer(std::string input){
-  enum identifier_inputs { id_letter, id_digit, id_dollar, id_other};
+  enum identifier_inputs { id_letter, id_digit, id_dollar, id_other };
   enum identifier_states { id_one, id_two, id_three };
-  enum real_inputs { r_plus, r_minus, r_digit, r_other, r_period};
+  enum real_inputs { r_plus, r_minus, r_digit, r_other, r_period };
   enum real_states { r_one, r_two, r_three, r_four, r_five };
-  enum integer_inputs { int_plus, int_minus, int_digit, int_other};
-  enum integer_states {};
+  enum integer_inputs { int_plus, int_minus, int_digit, int_other };
+  enum integer_states { int_one, int_two, int_three };
   
-  identifier_states id_table[3][4] = {id_two, id_three, id_three, id_three, id_two, id_two, id_two, id_three, id_three, id_three, id_three, id_three};
+  identifier_states id_table[3][4] = { id_two, id_three, id_three, id_three, id_two, id_two, id_two, id_three, id_three, id_three, id_three, id_three };
   real_states rs_table[5][5] = { r_two, r_two, r_two, r_five, r_five, r_five, r_five, r_two, r_five, r_three, r_five, r_five, r_four, 
     r_five, r_five, r_five, r_five, r_four, r_five, r_five, r_five, r_five, r_five, r_five, r_five };
-  integer_states int_table[0][0] = {};
+  integer_states int_table[3][4] = { int_two, int_two, int_two, int_three, int_three, int_three, int_two, int_three, int_three, int_three, int_three, int_three };
 
   //std::cout << "checking token " << input << "\n\n";
   std::string result = "";
@@ -152,7 +156,23 @@ std::string lexer(std::string input){
     if(real_current_state == r_four) {
       result = "REAL NUMBER   " + input + "\n";
     } else {
-      //check if input is an integer
+      integer_inputs int_current_input;
+      integer_states int_current_state = int_one;
+      
+      for(unsigned i = 0; i < input.length(); i++){
+        char temp = input[i];
+        if(temp == '+') int_current_input = int_plus;
+        else if(temp == '-') int_current_input = int_minus;
+        else if(isdigit(temp)) int_current_input = int_digit;
+        else int_current_input = int_other;
+        
+        int_current_state = int_table[int_current_state][int_current_input];
+      }
+      if(int_current_state == int_two){
+        result = "INTEGER       " + input + "\n";
+      } else if(contains_period(input)){
+        result = "SEPARATOR     .\n";
+      }
     }
   }
 
@@ -200,4 +220,13 @@ std::string strip_comments(std::string input, std::ifstream& stream){
   if(!found) input = "";
   return input;
 
+}
+
+bool contains_period(std::string input){
+  bool found = false;
+  
+  for(unsigned i = 0; i < input.length(); i++){
+    if(input[i] == '.') found = true;
+  }
+  return found;
 }
