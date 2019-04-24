@@ -1,0 +1,372 @@
+#include <iostream>
+#include <fstream>
+#include <string>
+#include <sstream>
+#include <locale>
+#include <ctype.h>
+#include <vector>
+
+struct tokens {
+    std::string token;
+    std::string lexeme;
+    tokens(std::string token_, std::string lexeme_) {
+        token = token_, lexeme = lexeme_;
+    }
+};
+
+bool is_separator(char  input);
+bool is_operator(char input);
+bool is_keyword(std::string input);
+bool contains_period(std::string input);
+bool analyze_syntax(std::vector<tokens> token_vec, int index, std::ofstream& output_file);
+bool S(std::vector<tokens> token_vec, int index, std::ofstream& output_file);
+bool E(std::vector<tokens> token_vec, int index, std::ofstream& output_file);
+bool Q(std::vector<tokens> token_vec, int index, std::ofstream& output_file);
+bool T(std::vector<tokens> token_vec, int index, std::ofstream& output_file);
+bool R(std::vector<tokens> token_vec, int index, std::ofstream& output_file);
+bool F(std::vector<tokens> token_vec, int index, std::ofstream& output_file);
+std::string format_separators(std::string input);
+std::string lexer(std::string token, std::vector<tokens>& token_vec);
+std::string strip_comments(std::string input, std::ifstream& stream);
+
+
+int main(){
+
+  std::string file_name;
+  std::vector<tokens> token_vec;
+  std::cout << "Enter the name of the file: ";
+  std::cin >> file_name;
+
+  std::ifstream input_file(file_name + ".txt");
+  std::ofstream output_file("output.txt");
+
+  if(!input_file.is_open()){
+    std::cout << "Error! File did not open successfully!\n\n";
+    return -1;
+  }
+
+  std::string token = "";
+  std::string line = "";
+  std::string temp = "";
+
+  output_file << "\nTOKENS        Lexemes\n\n";
+
+  while(std::getline(input_file, line)){
+    std::string temp = line;
+    int length = line.length();
+
+    // strip out the comments
+    for(unsigned i = 0; i < temp.length(); i++){
+      if(temp[i] == '!'){
+        // found the start of a comment
+        temp = strip_comments(std::string(temp.begin() + i + 1, temp.end()), input_file);
+        break;
+      }
+    }
+
+    temp = format_separators(temp);
+
+    std::stringstream ss(temp);
+    while(ss >> token){ // parse the line into individual tokens to send to the lexer
+      if(token.length() == 1){
+        if(is_operator(token[0])){
+          output_file << "OPERATOR      " << token << "\n";
+          token_vec.push_back(tokens(token, "operator"));
+        } else if(is_separator(token[0]) || token[0] == '.'){
+          output_file << "SEPARATOR     " << token << "\n";
+          token_vec.push_back(tokens(token, "separator"));
+        } else {
+          output_file << lexer(token, token_vec);
+        }
+      }
+      else if(is_keyword(token)){
+        output_file << "KEYWORD       " << token << "\n";
+        token_vec.push_back(tokens(token, "keyword"));
+      } else {
+        output_file << lexer(token, token_vec);
+      }
+    }
+    //std::cout << temp << std::endl;
+  }
+
+  input_file.close();
+  
+  std::cout << "OUTPUTTING VECTOR CONTENTS: \n";
+  for(int i = 0; i < token_vec.size(); i++){
+    std::cout << "Token :" << token_vec[i].token << " Lexeme:" << token_vec[i].lexeme << "\n";
+  }
+
+  if(!analyze_syntax(token_vec, 0, output_file)){
+    output_file << "Error! There is a syntax error in the source code!\n";
+  }
+
+  return 0;
+  // end main
+}
+
+bool is_separator(char input){
+  const int NUM_SEPARATORS = 11;
+  char separators[NUM_SEPARATORS] = {'(', ')', ',', ':', ';', '[', ']', '{', '}', '\''};
+
+  for(int i = 0; i < NUM_SEPARATORS; i++){
+    if(input == separators[i]) return true;
+  }
+  return false;
+}
+
+bool is_operator(char input){
+  const int SIZE = 8;
+  char operators[SIZE] = {'*', '+', '-', '=', '/', '>', '<', '%'};
+
+  for(int i = 0; i < SIZE; i++){
+    if(input == operators[i]) return true;
+  }
+  return false;
+}
+//int, float, bool, if, else, then, do, while, whileend, do, doend, for, and, or, function
+bool is_keyword(std::string input){
+  const int SIZE = 15;
+  std::string keywords[SIZE] = {"int", "float", "bool", "if", "else", "then", "do", "while", "whileend", "do", "doend", "for", "and", "or", "function"};
+
+  for(unsigned i = 0; i < SIZE; i++){
+    if(input == keywords[i]) return true;
+  }
+  return false;
+}
+
+std::string lexer(std::string input, std::vector<tokens>& token_vec){
+  enum identifier_inputs { id_letter, id_digit, id_dollar, id_other };
+  enum identifier_states { id_one, id_two, id_three };
+  enum real_inputs { r_plus, r_minus, r_digit, r_other, r_period };
+  enum real_states { r_one, r_two, r_three, r_four, r_five };
+  enum integer_inputs { int_plus, int_minus, int_digit, int_other };
+  enum integer_states { int_one, int_two, int_three };
+  
+  identifier_states id_table[3][4] = { id_two, id_three, id_three, id_three, id_two, id_two, id_two, id_three, id_three, id_three, id_three, id_three };
+  real_states rs_table[5][5] = { r_two, r_two, r_two, r_five, r_five, r_five, r_five, r_two, r_five, r_three, r_five, r_five, r_four, 
+    r_five, r_five, r_five, r_five, r_four, r_five, r_five, r_five, r_five, r_five, r_five, r_five };
+  integer_states int_table[3][4] = { int_two, int_two, int_two, int_three, int_three, int_three, int_two, int_three, int_three, int_three, int_three, int_three };
+
+  //std::cout << "checking token " << input << "\n\n";
+  std::string result = "";
+  identifier_states id_current_state = id_one;
+  identifier_inputs id_current_input;
+  
+  for(unsigned i = 0; i < input.length(); i++){
+    char temp = input[i];
+    if(isalpha(temp)) id_current_input = id_letter;
+    else if(isdigit(temp)) id_current_input = id_digit;
+    else if(temp == '$') id_current_input = id_dollar;
+    else id_current_input = id_other;
+      
+    id_current_state = id_table[id_current_state][id_current_input];
+  }
+
+  if(id_current_state == id_two){
+    //found identifier
+    result = "IDENTIFIER    " + input + "\n";
+    token_vec.push_back(tokens(input, "identifier"));
+    
+  } else { 
+    //check if input is a real number
+    real_states real_current_state = r_one;
+    real_inputs real_current_input;
+    
+    for(unsigned i = 0; i < input.length(); i++){
+      char temp = input[i];
+      if(temp == '+') real_current_input = r_plus;
+      else if(temp == '-') real_current_input = r_minus;
+      else if(isdigit(temp)) real_current_input = r_digit;
+      else if(temp == '.') real_current_input = r_period;
+      else real_current_input = r_other;
+      
+      real_current_state = rs_table[real_current_state][real_current_input];
+      
+    }
+    if(real_current_state == r_four) {
+      result = "REAL NUMBER   " + input + "\n";
+      token_vec.push_back(tokens(input, "real number"));
+    } else {
+      integer_inputs int_current_input;
+      integer_states int_current_state = int_one;
+      
+      for(unsigned i = 0; i < input.length(); i++){
+        char temp = input[i];
+        if(temp == '+') int_current_input = int_plus;
+        else if(temp == '-') int_current_input = int_minus;
+        else if(isdigit(temp)) int_current_input = int_digit;
+        else int_current_input = int_other;
+        
+        int_current_state = int_table[int_current_state][int_current_input];
+      }
+      if(int_current_state == int_two){
+        result = "INTEGER       " + input + "\n";
+        token_vec.push_back(tokens(input, "integer"));
+      } else if(contains_period(input)){
+        result = "SEPARATOR     .\n";
+        token_vec.push_back(tokens(input, "separator"));
+      }
+    }
+  }
+
+  return result;
+}
+
+std::string format_separators(std::string input){
+  for(unsigned i = 0; i < input.length(); i++){
+    if(is_separator(input[i])){
+      if(i == 0){
+        input = std::string(" ") + input[0] + std::string(" ") + std::string(input.begin() + 1, input.end());
+      } else if(i == input.length() - 1){
+        input = std::string(input.begin(), input.begin() + i) + std::string(" ") + input[i] + " ";
+      } else {
+        std::string temp = std::string(input.begin() + i + 1, input.end());
+        input = std::string(input.begin(), input.begin() + i) + " " + input[i] + " " + temp;
+      }
+      i += 2;
+    }
+  }
+  return input;
+}
+
+std::string strip_comments(std::string input, std::ifstream& stream){
+  // search for the next '!' that terminates the comments
+  // then return the string that follows immediately after the '!'
+  bool found = false;
+
+  do{
+
+    for(unsigned i = 0; i < input.length(); i++){
+      if(input[i] == '!'){
+        found = true;
+        if(i == input.length() - 1) input = "";
+        else {
+          input = std::string(input.begin() + i + 1, input.end());
+        }
+        break;
+      }
+    }
+
+    if(found) break;
+  } while(std::getline(stream, input));
+  
+  if(!found) input = "";
+  return input;
+
+}
+
+bool contains_period(std::string input){
+  bool found = false;
+  
+  for(unsigned i = 0; i < input.length(); i++){
+    if(input[i] == '.') found = true;
+  }
+  return found;
+}
+
+bool S(std::vector<tokens> token_vec, int index, std::ofstream& output_file){
+
+  if(token_vec[index].lexeme == "identifier"){
+    if(token_vec.size() > index + 1 && token_vec[index + 1].token == "="){
+      output_file << " <statement> -> <assign>\n <assign> -> <identifier>";
+      if(E(token_vec, index + 2, output_file)){
+        output_file << " <expression>\n";
+        return true;
+      }
+    }
+  }
+  return false;
+}
+bool E(std::vector<tokens> token_vec, int index, std::ofstream& output_file){
+  if(T(token_vec, index, output_file)){
+    output_file << "<expression> -> <term>";
+    if(Q(token_vec, index + 1, output_file)){
+      output_file << "<expression_prime>\n";
+      return true;
+    }
+  }
+  return false;
+}
+bool Q(std::vector<tokens> token_vec, int index, std::ofstream& output_file){
+  if(token_vec[index].token == "+"){
+    output_file << "+";
+    if(index + 1 < token_vec.size() && T(token_vec, index + 1, output_file)){
+      output_file << "<term>";
+      if(index + 2 < token_vec.size() && Q(token_vec, index + 2, output_file)){
+        output_file << "<expression prime>";
+        return true;
+      }
+    }
+  } else if(token_vec[index].token == "-"){
+    output_file << "-";
+    if(index + 1 < token_vec.size() && T(token_vec, index + 1, output_file)){
+      output_file << "<term>";
+      if(index + 2 < token_vec.size() && Q(token_vec, index + 2, output_file)){
+        output_file << "<expression prime>";
+        return true;
+      }
+    }
+  } else {
+    if(index == token_vec.size() - 1) {
+      output_file << "epsilon\n";
+      return true;
+    }
+  }
+  return false;
+}
+bool T(std::vector<tokens> token_vec, int index, std::ofstream& output_file){
+  if(F(token_vec, index, output_file)){
+    if(index + 1 < token_vec.size() && R(token_vec, index + 1, output_file)){
+      output_file << "<term> -> <factor> <term prime>\n";
+      return true;
+    }
+  }
+  return false;
+}
+bool R(std::vector<tokens> token_vec, int index, std::ofstream& output_file){
+  if(token_vec[index].token == "*"){
+    output_file << "*";
+    if(index + 1 < token_vec.size() && F(token_vec, index + 1, output_file)){
+      output_file << "<factor>";
+      if(index + 2 < token_vec.size() && R(token_vec, index + 2, output_file)){
+        output_file << "<term prime>\n";
+        return true;
+      }
+    }
+  } else if(token_vec[index].token == "/"){
+    if(index + 1 < token_vec.size() && F(token_vec, index + 1, output_file)){
+      output_file << "<factor>";
+      if(index + 2 < token_vec.size() && R(token_vec, index + 2, output_file)){
+        output_file << "<term prime>\n";
+        return true;
+      }
+    }
+  } else if(index + 1 == token_vec.size()){
+    output_file << "epsilon\n";
+    return true;
+  } else {
+    return false;
+  }
+}
+bool F(std::vector<tokens> token_vec, int index, std::ofstream& output_file){
+  if(token_vec[index].token == "("){
+    if(index + 1 < token_vec.size() && E(token_vec, index + 1, output_file)){
+      if(index + 2 < token_vec.size() && E(token_vec, index + 2, output_file)){
+        output_file << "( <expression> )\n";
+        return true;
+      }
+    }
+  } else if(token_vec[index].lexeme == "identifier"){
+    output_file << "<identifier>\n";
+    return true;
+  }
+  return false;
+}
+bool analyze_syntax(std::vector<tokens> token_vec, int index, std::ofstream& output_file){
+  return S(token_vec, 0, output_file) 
+      || E(token_vec, 0, output_file) 
+      || Q(token_vec, 0, output_file) 
+      || T(token_vec, 0, output_file) 
+      || R(token_vec, 0, output_file) 
+      || F(token_vec, 0, output_file);
+}
